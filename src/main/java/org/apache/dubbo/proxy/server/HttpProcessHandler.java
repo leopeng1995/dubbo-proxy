@@ -1,6 +1,9 @@
 package org.apache.dubbo.proxy.server;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONException;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.*;
 import org.apache.dubbo.proxy.dao.ServiceDefinition;
 import org.apache.dubbo.proxy.dao.ServiceMapping;
 import org.apache.dubbo.proxy.metadata.MetadataCollector;
@@ -10,17 +13,18 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.util.CharsetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 
 @ChannelHandler.Sharable
@@ -46,33 +50,25 @@ public class HttpProcessHandler extends SimpleChannelInboundHandler<FullHttpRequ
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
+        ByteBuf raw = msg.content();
+        String info = raw.toString(CharsetUtil.UTF_8);
 
-        QueryStringDecoder queryStringDecoder = new QueryStringDecoder(msg.uri());
-        String path = queryStringDecoder.rawPath();
-        if (path.endsWith("/")) {
-            path = path.substring(0, path.length() - 1);
-        }
-        if (path.startsWith("/")) {
-            path = path.substring(1);
-        }
-        if (path.contains("/")) {
-            String application = path.split("/")[0];
-            String service = path.split("/")[1];
-            Map<String, List<String>> params = queryStringDecoder.parameters();
-            if (params.containsKey("group")) {
-                service = params.get("group").get(0) + "/" + service;
-            }
-            if (params.containsKey("version")) {
-                service = service + ":" + params.get("version").get(0);
-            }
-            ByteBuf raw = msg.content();
-            String info = raw.toString(CharsetUtil.UTF_8);
+        // TODO error handle
+        try {
             ServiceDefinition serviceDefinition = JSON.parseObject(info, ServiceDefinition.class);
-            serviceDefinition.setServiceID(service);
-            serviceDefinition.setApplication(application);
             doRequest(ctx, serviceDefinition, msg);
-        }  else {
-            //TODO error handle
+        } catch (JSONException e) {
+            Map<String, String> result = new HashMap<>();
+            result.put("msg", "invalid json");
+
+            FullHttpResponse response = new DefaultFullHttpResponse(
+                    HTTP_1_1, OK,
+                    Unpooled.copiedBuffer(JSON.toJSONString(result), CharsetUtil.UTF_8));
+
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=UTF-8");
+
+            ctx.writeAndFlush(response);
+            ctx.close();
         }
     }
 
