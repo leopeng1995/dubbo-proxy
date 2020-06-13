@@ -59,13 +59,12 @@ public class Config {
 
     @Bean
     MetadataCollector getMetadataCollector() {
-        MetadataCollector metaDataCollector = null;
-        if (StringUtils.isNotEmpty(metadataAddress)) {
-            URL metadataUrl = URL.valueOf(metadataAddress);
-            metaDataCollector = ExtensionLoader.getExtensionLoader(MetadataCollector.class).
-                    getExtension(metadataUrl.getProtocol());
-        }
-        return metaDataCollector;
+        URL metadataUrl = URL.valueOf(metadataAddress);
+        MetadataCollector metadataCollector = ExtensionLoader.getExtensionLoader(MetadataCollector.class).
+                getExtension(metadataUrl.getProtocol());
+        metadataCollector.setUrl(metadataUrl);
+        metadataCollector.init();
+        return metadataCollector;
     }
 
 
